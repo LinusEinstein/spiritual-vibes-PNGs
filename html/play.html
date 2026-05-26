@@ -55,7 +55,7 @@
       HEAL_AMOUNT: 2,
       PICKUP_LIFETIME_MS: 5000,
       PICKUP_BLINK_MS: 1000,
-      HP: { runner: 1, patroller: 2, shooter: 2 },
+      HP: { runner: 3, patroller: 5, shooter: 4 },
       DROP_RATE: { runner: 0.50, patroller: 0.70, shooter: 0.80 },
       HEALTH_SHARE: { runner: 0.70, patroller: 0.50, shooter: 0.30 },
       KIND_WEIGHTS_GROUND: { runner: 0.60, shooter: 0.30, patroller: 0.10 },
@@ -71,7 +71,8 @@
         enemyBullet: 0xff8c3a,
         health: 0x6cc55a,
         powerup: 0x4aa3ff,
-        ground: 0x3a342c
+        ground: 0x2e2a26,
+        platform: 0x8b3a1f
       }
     };
 
@@ -79,7 +80,7 @@
       constructor() { super('MainScene'); }
 
       preload() {
-        this.load.image('bg', 'assets/background.png');
+        this.load.image('bg', 'assets/background.jpeg');
         this.load.audio('soundtrack', 'assets/soundtrack.mp3');
       }
 
@@ -164,6 +165,12 @@
         gr.fillRect(0, 0, 32, 32);
         gr.generateTexture('tex_ground', 32, 32);
         gr.destroy();
+
+        const gp = this.add.graphics();
+        gp.fillStyle(CFG.COLORS.platform, 1);
+        gp.fillRect(0, 0, 32, 32);
+        gp.generateTexture('tex_platform', 32, 32);
+        gp.destroy();
       }
 
       buildWorld(vh) {
@@ -191,7 +198,7 @@
         }];
 
         for (const p of platDefs) {
-          const plat = this.platforms.create(p.x, p.y, 'tex_ground');
+          const plat = this.platforms.create(p.x, p.y, 'tex_platform');
           plat.setDisplaySize(p.w, 20).refreshBody();
           this.surfaces.push({
             left: p.x - p.w / 2,
@@ -276,7 +283,7 @@
 
       setupCamera(vh) {
         this.cameras.main.setBounds(0, 0, CFG.WORLD_W, vh);
-        this.cameras.main.startFollow(this.player, true, 0.1, 0);
+        this.cameras.main.startFollow(this.player, true, 1, 1);
       }
 
       boxMuller(mu, sigma) {
