@@ -23,14 +23,129 @@
       font-size: 0.95rem;
     }
     .back-link:hover { background: rgba(0,0,0,0.7); }
+
+    .touch-controls { display: none; }
+    body.touch .touch-controls {
+      display: block;
+      position: fixed;
+      inset: 0;
+      pointer-events: none;
+      z-index: 20;
+      touch-action: none;
+      user-select: none;
+      -webkit-user-select: none;
+      -webkit-tap-highlight-color: transparent;
+    }
+    body.touch .touch-controls .cluster {
+      position: absolute;
+      bottom: 4vh;
+      display: flex;
+      gap: 2vh;
+      pointer-events: auto;
+    }
+    body.touch .touch-controls .cluster.left { left: 4vh; }
+    body.touch .touch-controls .cluster.right { right: 4vh; }
+    body.touch .touch-controls button {
+      width: min(14vh, 14vw);
+      height: min(14vh, 14vw);
+      border-radius: 50%;
+      border: 2px solid rgba(255,255,255,0.55);
+      background: rgba(255,255,255,0.18);
+      color: #fdf8f1;
+      font: 700 min(5vh, 5vw)/1 Georgia, "Times New Roman", serif;
+      touch-action: none;
+      user-select: none;
+      -webkit-user-select: none;
+      -webkit-tap-highlight-color: transparent;
+      cursor: pointer;
+    }
+    body.touch .touch-controls button:active,
+    body.touch .touch-controls button.pressed {
+      background: rgba(255,255,255,0.36);
+      border-color: rgba(255,255,255,0.9);
+    }
   </style>
 </head>
 <body class="play">
   <a class="back-link" href="index.html">← Home</a>
   <div id="game"></div>
+  <div class="touch-controls" aria-hidden="true">
+    <div class="cluster left">
+      <button type="button" data-action="shoot" aria-label="Shoot">✦</button>
+      <button type="button" data-action="jump" aria-label="Jump">▲</button>
+    </div>
+    <div class="cluster right">
+      <button type="button" data-action="left" aria-label="Move left">◀</button>
+      <button type="button" data-action="right" aria-label="Move right">▶</button>
+    </div>
+  </div>
   <script src="https://cdn.jsdelivr.net/npm/phaser@4.1.0/dist/phaser.min.js"></script>
   <script>
+    const touchInput = {
+      left: false,
+      right: false,
+      shoot: false,
+      jumpPressed: false,
+      enterPressed: false
+    };
+
+    (function initTouchControls() {
+      const isTouch = ('ontouchstart' in window) || (navigator.maxTouchPoints || 0) > 0;
+      if (!isTouch) return;
+      document.body.classList.add('touch');
+
+      const overlay = document.querySelector('.touch-controls');
+      if (!overlay) return;
+
+      const setHeld = (key, val) => { touchInput[key] = val; };
+      const setOneShot = (key) => { touchInput[key] = true; };
+
+      const bind = (action, onDown, onUp) => {
+        const el = overlay.querySelector('[data-action="' + action + '"]');
+        if (!el) return;
+        const down = (e) => {
+          e.preventDefault();
+          el.classList.add('pressed');
+          if (el.setPointerCapture && e.pointerId != null) {
+            try { el.setPointerCapture(e.pointerId); } catch (_) {}
+          }
+          onDown();
+          // Tapping anywhere also doubles as "restart" on the game-over screen,
+          // since touch devices have no Enter key.
+          touchInput.enterPressed = true;
+        };
+        const up = (e) => {
+          e.preventDefault();
+          el.classList.remove('pressed');
+          if (onUp) onUp();
+        };
+        el.addEventListener('pointerdown', down);
+        el.addEventListener('pointerup', up);
+        el.addEventListener('pointercancel', up);
+        el.addEventListener('pointerleave', up);
+        el.addEventListener('contextmenu', (e) => e.preventDefault());
+      };
+
+      bind('left', () => setHeld('left', true), () => setHeld('left', false));
+      bind('right', () => setHeld('right', true), () => setHeld('right', false));
+      bind('shoot', () => setHeld('shoot', true), () => setHeld('shoot', false));
+      bind('jump', () => setOneShot('jumpPressed'), null);
+
+      const resetAll = () => {
+        touchInput.left = false;
+        touchInput.right = false;
+        touchInput.shoot = false;
+        touchInput.jumpPressed = false;
+        overlay.querySelectorAll('button.pressed').forEach((b) => b.classList.remove('pressed'));
+      };
+      document.addEventListener('visibilitychange', () => { if (document.hidden) resetAll(); });
+      window.addEventListener('blur', resetAll);
+    })();
+  </script>
+  <script>
     const CFG = {
+      BASE_W: 1280,
+      BASE_H: 720,
       WORLD_W: 4000,
       GROUND_H: 60,
       GRAVITY: 1900,
@@ -409,13 +524,16 @@
       }
 
       handlePlayerInput() {
-        const left = this.cursors.left.isDown || this.keys.A.isDown;
-        const right = this.cursors.right.isDown || this.keys.D.isDown;
+        const left = this.cursors.left.isDown || this.keys.A.isDown || touchInput.left;
+        const right = this.cursors.right.isDown || this.keys.D.isDown || touchInput.right;
+        const touchJump = touchInput.jumpPressed;
+        if (touchJump) touchInput.jumpPressed = false;
         const jumpPressed =
           Phaser.Input.Keyboard.JustDown(this.cursors.space) ||
           Phaser.Input.Keyboard.JustDown(this.cursors.up) ||
-          Phaser.Input.Keyboard.JustDown(this.keys.W);
-        const shoot = this.keys.Z.isDown || this.keys.CTRL.isDown;
+          Phaser.Input.Keyboard.JustDown(this.keys.W) ||
+          touchJump;
+        const shoot = this.keys.Z.isDown || this.keys.CTRL.isDown || touchInput.shoot;
 
         if (left) {
           this.player.setVelocityX(-CFG.PLAYER_SPEED);
@@ -585,11 +703,15 @@
 
       update() {
         if (this.gameOver) {
-          if (Phaser.Input.Keyboard.JustDown(this.keys.ENTER)) {
+          const enterTouch = touchInput.enterPressed;
+          if (enterTouch) touchInput.enterPressed = false;
+          if (Phaser.Input.Keyboard.JustDown(this.keys.ENTER) || enterTouch) {
             this.scene.restart();
           }
           return;
         }
+        // Always drain the one-shot so it can't trigger across frames.
+        touchInput.enterPressed = false;
         this.handlePlayerInput();
         this.updateEnemies();
         this.updateHpBars();
@@ -609,9 +731,10 @@
         arcade: { gravity: { y: CFG.GRAVITY }, debug: false }
       },
       scale: {
-        mode: Phaser.Scale.RESIZE,
-        width: '100%',
-        height: '100%'
+        mode: Phaser.Scale.FIT,
+        autoCenter: Phaser.Scale.CENTER_BOTH,
+        width: CFG.BASE_W,
+        height: CFG.BASE_H
       },
       scene: [MainScene]
     });
